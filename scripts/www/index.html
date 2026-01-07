@@ -1,11 +1,473 @@
 <!DOCTYPE html>
-<html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>PakePlus</title>
-    </head>
-    <body>
-        PakePlus
-    </body>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>YHQ&QHS - AI 智能识图单词卡</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', 'Noto Sans SC', sans-serif; background-color: #F5F5F4; -webkit-tap-highlight-color: transparent; }
+        .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.5); }
+        .chart-container { position: relative; width: 100%; max-width: 400px; margin: 0 auto; height: 220px; }
+        .loader { border: 3px solid #f3f3f3; border-top: 3px solid #4F46E5; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .fade-in { animation: fadeIn 0.5s ease-out forwards; opacity: 0; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        /* 针对图片预览区域的优化 */
+        .preview-container { aspect-ratio: 4/3; width: 100%; position: relative; overflow: hidden; }
+    </style>
+</head>
+<body class="text-stone-800 min-h-screen flex flex-col pb-10">
+
+    <nav class="w-full bg-white/90 backdrop-blur border-b border-stone-200 sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <span class="text-xl font-bold tracking-tight text-stone-900">YHQ&QHS<span class="text-indigo-600">识图学英语</span></span>
+                <span class="bg-indigo-100 text-indigo-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold">V0.2</span>
+            </div>
+            <button id="mockBtn" class="text-xs text-stone-400">模拟数据</button>
+        </div>
+    </nav>
+
+    <main class="flex-grow max-w-6xl mx-auto w-full px-4 py-6 space-y-6">
+
+        <section class="text-center space-y-2">
+            <h1 class="text-2xl font-bold text-stone-900">拍照学英语</h1>
+            <p class="text-sm text-stone-500">上传照片，AI 自动生成单词卡片</p>
+        </section>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <div class="lg:col-span-5 space-y-4">
+                <div class="glass-panel rounded-2xl p-4 shadow-sm">
+                    <div id="dropZone" class="border-2 border-dashed border-stone-300 rounded-xl p-2 text-center hover:border-indigo-500 hover:bg-indigo-50 transition-all relative overflow-hidden group min-h-[240px] flex flex-col items-center justify-center bg-stone-50">
+                        
+                        <input type="file" id="fileInput" class="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer" accept="image/*">
+                        
+                        <div id="uploadPrompt" class="space-y-3 transition-opacity duration-300 z-0 pointer-events-none">
+                            <div class="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto shadow-sm border border-stone-100">
+                                <span class="text-3xl">📸</span>
+                            </div>
+                            <div>
+                                <p class="font-medium text-stone-700">点击拍照 / 上传</p>
+                                <p class="text-xs text-stone-400 mt-1">支持相册与相机</p>
+                            </div>
+                        </div>
+
+                        <div id="previewWrapper" class="hidden absolute inset-0 z-20 bg-black/5 flex flex-col items-center justify-center w-full h-full">
+                            <img id="imagePreview" class="w-full h-full object-contain p-2" alt="Preview">
+                            
+                            <div class="absolute bottom-6 flex gap-3 z-30">
+                                <button id="reUploadBtn" class="bg-white/90 backdrop-blur text-stone-700 px-4 py-2 rounded-full text-sm font-medium shadow-lg active:scale-95 transition">
+                                    重选
+                                </button>
+                                <button id="startBtn" class="bg-indigo-600 text-white px-6 py-2 rounded-full text-sm font-bold shadow-lg shadow-indigo-200 active:scale-95 transition flex items-center gap-2">
+                                    <span>🚀 开始识别</span>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div id="loadingOverlay" class="hidden absolute inset-0 bg-white/95 flex flex-col items-center justify-center z-40">
+                            <div class="loader mb-2"></div>
+                            <span id="loadingText" class="text-xs font-bold text-indigo-600 animate-pulse">处理中...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-panel rounded-2xl p-4 shadow-sm">
+                    <h3 class="font-semibold text-sm text-stone-800 mb-2 px-1">今日学习分类</h3>
+                    <div class="chart-container">
+                        <canvas id="categoryChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-7">
+                <div id="emptyState" class="h-64 flex flex-col items-center justify-center text-center border border-stone-100 rounded-2xl bg-white/50 text-stone-400">
+                    <div class="text-4xl mb-2 grayscale opacity-20">🧠</div>
+                    <p class="text-sm">准备就绪，请上传图片</p>
+                </div>
+
+                <div id="resultCard" class="hidden fade-in space-y-4">
+                    <div class="bg-white rounded-2xl p-6 shadow-lg border-l-4 border-indigo-500 relative overflow-hidden">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <span class="text-[10px] uppercase tracking-wider font-bold text-stone-400">Detected Object</span>
+                                <h2 id="resWord" class="text-4xl font-bold text-stone-900 leading-tight my-1">Example</h2>
+                                
+                                <div class="flex items-center gap-3 mt-2">
+                                    <span id="resIpa" class="font-mono text-sm text-stone-500 bg-stone-100 px-1.5 py-0.5 rounded">/ig'zæmpl/</span>
+                                    <div class="flex gap-1">
+                                        <button id="btnUK" class="flex items-center gap-1 text-[10px] bg-indigo-50 text-indigo-700 px-2 py-1 rounded-md hover:bg-indigo-100 active:scale-95 transition font-bold border border-indigo-100">
+                                            🇬🇧 UK
+                                        </button>
+                                        <button id="btnUS" class="flex items-center gap-1 text-[10px] bg-indigo-50 text-indigo-700 px-2 py-1 rounded-md hover:bg-indigo-100 active:scale-95 transition font-bold border border-indigo-100">
+                                            🇺🇸 US
+                                        </button>
+                                    </div>
+                                </div>
+
+                            </div>
+                            <div class="text-right">
+                                <span class="text-[10px] uppercase tracking-wider font-bold text-stone-400">Meaning</span>
+                                <p id="resCn" class="text-2xl font-serif text-stone-700 mt-1">示例</p>
+                                <span id="resCategory" class="inline-block mt-1 text-[10px] bg-stone-100 text-stone-500 px-2 rounded-full">General</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-2xl p-5 shadow-sm border border-stone-200">
+                        <h3 class="font-semibold text-stone-800 mb-3 text-sm flex items-center gap-2">📝 双语例句</h3>
+                        <div id="sentencesList" class="space-y-3">
+                            </div>
+                    </div>
+
+                    <button onclick="resetUpload()" class="w-full py-3 bg-stone-900 text-white rounded-xl shadow-md font-medium active:scale-95 transition-transform">
+                        识别下一张
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <section class="pt-6 border-t border-stone-200">
+            <h3 class="text-base font-bold text-stone-800 mb-3 px-1">最近记录 (History)</h3>
+            <div id="historyGrid" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                </div>
+        </section>
+
+    </main>
+
+    <script>
+        // ==========================================
+        // 🔑 配置区域
+        // ==========================================
+        const API_KEY = "sk-aa6fKhDvt0ONchour9zenVryn0j5UDwbgJ5jklBthoXYrkMm"; 
+        const API_ENDPOINT = "https://api.strai.top/v1/chat/completions";
+        const API_MODEL = "[0.005]gemini-2.5-flash"; // 或 gpt-4o-mini
+        const HISTORY_KEY = "YHQ&QHS学英语_data_v0.001";
+        // ==========================================
+
+        const els = {
+            fileInput: document.getElementById('fileInput'),
+            dropZone: document.getElementById('dropZone'),
+            previewWrapper: document.getElementById('previewWrapper'),
+            preview: document.getElementById('imagePreview'),
+            prompt: document.getElementById('uploadPrompt'),
+            startBtn: document.getElementById('startBtn'),
+            reUploadBtn: document.getElementById('reUploadBtn'),
+            loader: document.getElementById('loadingOverlay'),
+            loadingText: document.getElementById('loadingText'),
+            empty: document.getElementById('emptyState'),
+            result: document.getElementById('resultCard'),
+            resWord: document.getElementById('resWord'),
+            resIpa: document.getElementById('resIpa'),
+            resCn: document.getElementById('resCn'),
+            resCategory: document.getElementById('resCategory'),
+            sentences: document.getElementById('sentencesList'),
+            history: document.getElementById('historyGrid'),
+            btnUK: document.getElementById('btnUK'),
+            btnUS: document.getElementById('btnUS'),
+            mockBtn: document.getElementById('mockBtn'),
+            chart: document.getElementById('categoryChart')
+        };
+
+        // 状态变量
+        let currentFile = null;
+        let chartInstance = null;
+        let categoryStats = {};
+
+        // --- 初始化 ---
+        initChart();
+        loadHistory();
+
+        // --- 事件监听 ---
+        els.fileInput.addEventListener('change', handleFileSelect);
+        
+        els.reUploadBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // 防止冒泡触发 dropZone 点击
+            els.fileInput.click();
+        });
+
+        // 核心：点击“开始识别”才执行压缩和上传
+        els.startBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (!currentFile) return;
+            await processAndAnalyze(currentFile);
+        });
+
+        els.mockBtn.addEventListener('click', () => runAnalysis(null, true));
+
+        // 播放音频逻辑 (Type: 1=UK, 2=US)
+        // 使用有道词典接口，虽然不是官方API，但稳定且发音标准
+        els.btnUK.addEventListener('click', () => playAudio(1));
+        els.btnUS.addEventListener('click', () => playAudio(2));
+
+        function playAudio(type) {
+            const word = els.resWord.innerText;
+            if(!word) return;
+            const audioUrl = `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(word)}&type=${type}`;
+            new Audio(audioUrl).play().catch(e => alert("播放失败，请检查网络"));
+        }
+
+        // --- 逻辑：选择文件与预览 ---
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            currentFile = file;
+
+            // 1. 立即显示预览 (使用 ObjectURL，极快)
+            const objectUrl = URL.createObjectURL(file);
+            els.preview.src = objectUrl;
+            
+            // 2. 切换 UI 状态
+            els.prompt.classList.add('opacity-0'); // 隐藏提示
+            els.previewWrapper.classList.remove('hidden'); // 显示预览层
+            
+            // 3. 隐藏 input (避免遮挡按钮)，但要保留重新触发的能力
+            els.fileInput.classList.add('hidden');
+        }
+
+        // --- 逻辑：重置上传 ---
+        window.resetUpload = function() { // 暴露给全局
+            els.fileInput.value = '';
+            els.fileInput.classList.remove('hidden'); // 恢复点击区域
+            els.fileInput.click();
+        }
+
+        // --- 逻辑：处理与分析 ---
+        async function processAndAnalyze(file) {
+            setLoading(true, "压缩图片中...");
+            els.startBtn.classList.add('hidden'); // 隐藏开始按钮防止重复点击
+            els.reUploadBtn.classList.add('hidden');
+
+            try {
+                // 1. 压缩图片
+                const compressedBase64 = await compressImage(file, 1024, 0.7);
+                
+                // 2. 发起 API 请求
+                setLoading(true, "AI 正在识别...");
+                await runAnalysis(compressedBase64);
+
+            } catch (err) {
+                console.error(err);
+                alert("出错啦: " + err.message);
+                // 恢复 UI
+                els.startBtn.classList.remove('hidden');
+                els.reUploadBtn.classList.remove('hidden');
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // --- 图片压缩算法 ---
+        function compressImage(file, maxWidth, quality) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        let width = img.width;
+                        let height = img.height;
+                        if (width > maxWidth) {
+                            height = Math.round(height * (maxWidth / width));
+                            width = maxWidth;
+                        }
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+                        resolve(dataUrl);
+                    };
+                    img.onerror = () => reject(new Error("图片加载失败"));
+                };
+                reader.onerror = (error) => reject(error);
+            });
+        }
+
+        // --- 核心逻辑：API 调用 ---
+        async function runAnalysis(base64Image, isMock = false) {
+            try {
+                let data;
+                if (isMock) {
+                    await new Promise(r => setTimeout(r, 800));
+                    data = getMockData();
+                    // 模拟图片
+                    if (!base64Image) {
+                        base64Image = "https://images.unsplash.com/photo-1463936575829-25148e1db1b8?auto=format&fit=crop&w=500&q=80";
+                        els.preview.src = base64Image;
+                        els.previewWrapper.classList.remove('hidden');
+                    }
+                } else {
+                    if (!API_KEY || API_KEY.includes("xxxx")) throw new Error("请检查 API Key");
+                    data = await callApi(base64Image);
+                }
+
+                renderResult(data);
+                saveToHistory(data, base64Image);
+                updateChart(data.category);
+
+            } catch (error) {
+                throw error; // 抛出给上层处理
+            }
+        }
+
+        async function callApi(dataURI) {
+            const promptText = `
+            Identify the main object in this image.
+            Return a pure JSON object strictly following this format (no markdown):
+            {
+                "word": "English Word (Singular)",
+                "ipa": "IPA Pronunciation (e.g. /kæt/)",
+                "meaning": "Simple Chinese Meaning",
+                "category": "Category (Food, Tech, Nature, Home, Office, Travel)",
+                    {"en": "Sentence 1...", "cn": "Translation 1..."},
+                    {"en": "Sentence 2...", "cn": "Translation 2..."},
+                    {"en": "Sentence 3...", "cn": "Translation 3..."}
+                ]
+            }
+            IMPORTANT: Please provide exactly 3 distinct example sentences varying in complexity.`; 
+            // 👆 增加了 "IMPORTANT" 这行明确指令，并在 JSON 示例中暗示了 3 个位置
+
+            const payload = {
+                model: API_MODEL,
+                messages: [
+                    {
+                        role: "user",
+                        content: [
+                            { type: "text", text: promptText },
+                            { type: "image_url", image_url: { url: dataURI } }
+                        ]
+                    }
+                ]
+            };
+
+            const response = await fetch(API_ENDPOINT, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_KEY}` },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) throw new Error(`API Error: ${response.status}`);
+            const resData = await response.json();
+            if (!resData.choices || resData.choices.length === 0) throw new Error("API 返回为空");
+
+            let content = resData.choices[0].message.content;
+            content = content.replace(/```json|```/g, '').trim();
+            return JSON.parse(content);
+        }
+
+        // --- UI 渲染 ---
+        function renderResult(data) {
+            els.empty.classList.add('hidden');
+            els.result.classList.remove('hidden');
+            
+            // 滚动到结果区域
+            els.result.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+            els.resWord.innerText = data.word;
+            els.resIpa.innerText = data.ipa || '';
+            els.resCn.innerText = data.meaning;
+            els.resCategory.innerText = data.category || 'General';
+
+            els.sentences.innerHTML = data.sentences.map(s => `
+                <div class="bg-stone-50 p-3 rounded-lg border-l-2 border-stone-300">
+                    <p class="text-stone-900 text-sm font-medium leading-relaxed">${s.en}</p>
+                    <p class="text-stone-500 text-xs mt-1">${s.cn}</p>
+                </div>
+            `).join('');
+        }
+
+        function setLoading(isLoading, text) {
+            if (isLoading) {
+                els.loader.classList.remove('hidden');
+                els.loadingText.innerText = text;
+            } else {
+                els.loader.classList.add('hidden');
+            }
+        }
+
+        // --- 历史记录与图表 (保持原逻辑，稍作优化) ---
+        function saveToHistory(data, imgSrc) {
+            let history = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+            const newItem = { id: Date.now(), data: data, img: imgSrc };
+            history.unshift(newItem);
+            if (history.length > 500) history.pop(); // 限制数量
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+            renderHistoryItem(newItem, true);
+        }
+
+        function loadHistory() {
+            const history = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+            els.history.innerHTML = '';
+            categoryStats = {};
+            history.forEach(item => {
+                renderHistoryItem(item, false);
+                const cat = item.data.category || 'Other';
+                categoryStats[cat] = (categoryStats[cat] || 0) + 1;
+            });
+            updateChart(null, true);
+        }
+
+        function renderHistoryItem(item, isNew) {
+            const div = document.createElement('div');
+            div.className = 'flex flex-col items-center gap-1 cursor-pointer group fade-in';
+            div.innerHTML = `
+                <div class="w-16 h-16 rounded-xl overflow-hidden border border-stone-200 shadow-sm group-hover:border-indigo-400 transition-colors bg-white relative">
+                    <img src="${item.img}" class="w-full h-full object-cover">
+                </div>
+                <span class="text-[10px] text-stone-600 font-medium truncate w-16 text-center">${item.data.word}</span>
+            `;
+            div.onclick = () => {
+                renderResult(item.data);
+                els.preview.src = item.img;
+                els.previewWrapper.classList.remove('hidden');
+                els.prompt.classList.add('opacity-0');
+                els.fileInput.classList.add('hidden');
+                els.startBtn.classList.add('hidden'); // 历史记录查看不需要开始按钮
+                els.reUploadBtn.classList.remove('hidden');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            };
+            if (isNew) els.history.prepend(div);
+            else els.history.appendChild(div);
+        }
+
+        function initChart() {
+            const ctx = els.chart.getContext('2d');
+            Chart.defaults.font.family = "'Inter', sans-serif";
+            chartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: { labels: [], datasets: [{ data: [], backgroundColor: ['#4F46E5', '#06B6D4', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444'], borderWidth: 0 }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: {size: 10} } } }, cutout: '75%' }
+            });
+        }
+
+        function updateChart(newCategory, reloadAll = false) {
+            if (!reloadAll && newCategory) {
+                categoryStats[newCategory] = (categoryStats[newCategory] || 0) + 1;
+            }
+            chartInstance.data.labels = Object.keys(categoryStats);
+            chartInstance.data.datasets[0].data = Object.values(categoryStats);
+            chartInstance.update();
+        }
+
+        function getMockData() {
+            return {
+                word: "Cactus",
+                ipa: "/ˈkæk.təs/",
+                meaning: "仙人掌",
+                category: "Nature",
+                sentences: [
+                    {en: "This cactus has sharp spines.", cn: "这株仙人掌有尖锐的刺。"},
+                    {en: "Cacti grow in dry deserts.", cn: "仙人掌生长在干旱的沙漠里。"}
+                ]
+            };
+        }
+    </script>
+</body>
 </html>
